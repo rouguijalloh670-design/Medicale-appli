@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Utilisateur {
+  id          Int          @id @default(autoincrement())
+  email       String       @unique
+  motDePasse  String
+  nom         String
+  rendezVous  RendezVous[]
+}
+
+model Centre {
+  id        Int        @id @default(autoincrement())
+  nom       String
+  adresse   String
+  contact   String
+  medecins  Medecin[]
+}
+
+model Specialite {
+  id        Int        @id @default(autoincrement())
+  nom       String     @unique
+  medecins  Medecin[]
+}
+
+model Medecin {
+  id              Int             @id @default(autoincrement())
+  nom             String
+  centreId        Int
+  specialiteId    Int
+
+  centre          Centre          @relation(fields: [centreId], references: [id])
+  specialite      Specialite      @relation(fields: [specialiteId], references: [id])
+  disponibilites  Disponibilite[]
+  absences        Absence[]
+  rendezVous      RendezVous[]
+}
+
+model Disponibilite {
+  id          Int         @id @default(autoincrement())
+  medecinId   Int
+  date        DateTime
+  heure       String
+  disponible  Boolean     @default(true)
+
+  medecin     Medecin     @relation(fields: [medecinId], references: [id])
+  rendezVous  RendezVous?
+}
+
+model Absence {
+  id        Int      @id @default(autoincrement())
+  medecinId Int
+  date      DateTime
+  motif     String
+
+  medecin   Medecin  @relation(fields: [medecinId], references: [id])
+}
+
+model RendezVous {
+  id              Int           @id @default(autoincrement())
+  utilisateurId   Int
+  medecinId       Int
+  disponibiliteId Int           @unique
+  patientNom      String
+  createdAt       DateTime      @default(now())
+
+  utilisateur     Utilisateur   @relation(fields: [utilisateurId], references: [id])
+  medecin         Medecin       @relation(fields: [medecinId], references: [id])
+  disponibilite   Disponibilite @relation(fields: [disponibiliteId], references: [id])
+}

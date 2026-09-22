@@ -1,167 +1,279 @@
 const express = require("express");
 const cors = require("cors");
+const { PrismaClient } = require("@prisma/client");
+
+const prisma = new PrismaClient();
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-const centres = [
-  {
-    id: 1,
-    nom: "Centre Médical Nongo",
-    adresse: "Nongo, Conakry",
-    contact: "622 000 001"
-  },
-  {
-    id: 2,
-    nom: "Clinique Camayenne",
-    adresse: "Camayenne, Conakry",
-    contact: "622 000 002"
-  }
-];
+/* =========================
+   CONNEXION
+========================= */
 
-const specialites = [
-  { id: 1, nom: "Médecine générale" },
-  { id: 2, nom: "Pédiatrie" },
-  { id: 3, nom: "Cardiologie" }
-];
+app.post("/login", async (req, res) => {
+  try {
+    const { email, motDePasse } = req.body;
 
-const medecins = [
-  { id: 1, nom: "Dr. Amadou Bah", centreId: 1, specialiteId: 1 },
-  { id: 2, nom: "Dr. Fatou Camara", centreId: 1, specialiteId: 2 },
-  { id: 3, nom: "Dr. Mohamed Diallo", centreId: 2, specialiteId: 3 }
-];
+    const utilisateur = await prisma.utilisateur.findUnique({
+      where: {
+        email: email
+      }
+    });
 
-const disponibilites = [
-  { id: 1, medecinId: 1, date: "2026-09-23", heure: "09:00" },
-  { id: 2, medecinId: 1, date: "2026-09-23", heure: "10:00" },
-  { id: 3, medecinId: 2, date: "2026-09-23", heure: "11:00" },
-  { id: 4, medecinId: 3, date: "2026-09-23", heure: "14:00" }
-];
+    if (!utilisateur || utilisateur.motDePasse !== motDePasse) {
+      return res.status(401).json({
+        message: "Email ou mot de passe incorrect."
+      });
+    }
 
-const rendezVous = [];
+    res.json({
+      message: "Connexion réussie",
+      utilisateur: {
+        id: utilisateur.id,
+        email: utilisateur.email,
+        nom: utilisateur.nom
+      }
+    });
+  } catch (error) {
+    console.error("Erreur login :", error);
 
-const absences = [
-  {
-    id: 1,
-    medecinId: 2,
-    date: "2026-09-23",
-    motif: "Congé"
-  }
-];
-
-const utilisateurs = [
-  {
-    id: 1,
-    email: "admin@medical.com",
-    motDePasse: "123456",
-    nom: "Administrateur"
-  }
-];
-
-app.post("/login", (req, res) => {
-  const { email, motDePasse } = req.body;
-
-  const utilisateur = utilisateurs.find(
-    u => u.email === email && u.motDePasse === motDePasse
-  );
-
-  if (!utilisateur) {
-    return res.status(401).json({
-      message: "Email ou mot de passe incorrect."
+    res.status(500).json({
+      message: "Erreur serveur lors de la connexion."
     });
   }
+});
 
+/* =========================
+   ACCUEIL
+========================= */
+
+app.get("/", (req, res) => {
   res.json({
-    message: "Connexion réussie",
-    utilisateur: {
-      id: utilisateur.id,
-      email: utilisateur.email,
-      nom: utilisateur.nom
-    }
+    message: "API Medical App OK"
   });
 });
 
-// Accueil
-app.get("/", (req, res) => {
-  res.json({ message: "API Medical App OK" });
-});
+/* =========================
+   CENTRES
+========================= */
 
-// Centres
-app.get("/centres", (req, res) => {
-  res.json(centres);
-});
+app.get("/centres", async (req, res) => {
+  try {
+    const centres = await prisma.centre.findMany({
+      orderBy: {
+        id: "asc"
+      }
+    });
 
-// Spécialités
-app.get("/specialites", (req, res) => {
-  res.json(specialites);
-});
+    res.json(centres);
+  } catch (error) {
+    console.error("Erreur centres :", error);
 
-// Médecins filtrés
-app.get("/medecins", (req, res) => {
-  const { centreId, specialiteId } = req.query;
-
-  let resultat = medecins;
-
-  if (centreId) {
-    resultat = resultat.filter(m => m.centreId === Number(centreId));
-  }
-
-  if (specialiteId) {
-    resultat = resultat.filter(m => m.specialiteId === Number(specialiteId));
-  }
-
-  res.json(resultat);
-});
-
-// Disponibilités
-app.get("/medecins/:id/disponibilites", (req, res) => {
-  const medecinId = Number(req.params.id);
-
-  const estAbsent = absences.some(
-    (a) => a.medecinId === medecinId && a.date === "2026-09-23"
-  );
-
-  if (estAbsent) {
-    return res.json([]);
-  }
-
-  const resultat = disponibilites.filter(
-    (d) =>
-      d.medecinId === medecinId &&
-      !rendezVous.some((r) => r.disponibiliteId === d.id)
-  );
-
-  res.json(resultat);
-});
-// Réserver
-app.post("/rendez-vous", (req, res) => {
-  const { medecinId, disponibiliteId, patientNom } = req.body;
-
-  const dejaReserve = rendezVous.some(
-    r => r.disponibiliteId === Number(disponibiliteId)
-  );
-
-  if (dejaReserve) {
-    return res.status(400).json({
-      message: "Ce créneau est déjà réservé."
+    res.status(500).json({
+      message: "Erreur lors de la récupération des centres."
     });
   }
-
-  const nouveauRdv = {
-    id: rendezVous.length + 1,
-    medecinId: Number(medecinId),
-    disponibiliteId: Number(disponibiliteId),
-    patientNom,
-    statut: "CONFIRME"
-  };
-
-  rendezVous.push(nouveauRdv);
-
-  res.status(201).json(nouveauRdv);
 });
+
+/* =========================
+   SPECIALITES
+========================= */
+
+app.get("/specialites", async (req, res) => {
+  try {
+    const specialites = await prisma.specialite.findMany({
+      orderBy: {
+        id: "asc"
+      }
+    });
+
+    res.json(specialites);
+  } catch (error) {
+    console.error("Erreur spécialités :", error);
+
+    res.status(500).json({
+      message: "Erreur lors de la récupération des spécialités."
+    });
+  }
+});
+
+/* =========================
+   MEDECINS
+========================= */
+
+app.get("/medecins", async (req, res) => {
+  try {
+    const { centreId, specialiteId } = req.query;
+
+    const filtre = {};
+
+    if (centreId) {
+      filtre.centreId = Number(centreId);
+    }
+
+    if (specialiteId) {
+      filtre.specialiteId = Number(specialiteId);
+    }
+
+    const medecins = await prisma.medecin.findMany({
+      where: filtre,
+      orderBy: {
+        id: "asc"
+      }
+    });
+
+    res.json(medecins);
+  } catch (error) {
+    console.error("Erreur médecins :", error);
+
+    res.status(500).json({
+      message: "Erreur lors de la récupération des médecins."
+    });
+  }
+});
+
+/* =========================
+   DISPONIBILITES
+========================= */
+
+app.get("/medecins/:id/disponibilites", async (req, res) => {
+  try {
+    const medecinId = Number(req.params.id);
+
+    /*
+      On récupère les disponibilités du médecin
+      qui ne possèdent pas encore de rendez-vous.
+    */
+
+    const disponibilites = await prisma.disponibilite.findMany({
+      where: {
+        medecinId: medecinId,
+        disponible: true,
+        rendezVous: null
+      },
+      orderBy: [
+        {
+          date: "asc"
+        },
+        {
+          heure: "asc"
+        }
+      ]
+    });
+
+    res.json(disponibilites);
+  } catch (error) {
+    console.error("Erreur disponibilités :", error);
+
+    res.status(500).json({
+      message: "Erreur lors de la récupération des disponibilités."
+    });
+  }
+});
+
+/* =========================
+   RESERVATION
+========================= */
+
+app.post("/rendez-vous", async (req, res) => {
+  try {
+    const {
+      medecinId,
+      disponibiliteId,
+      patientNom,
+      utilisateurId
+    } = req.body;
+
+    const medecinIdNumber = Number(medecinId);
+    const disponibiliteIdNumber = Number(disponibiliteId);
+
+    /*
+      Pour l'instant, si le frontend n'envoie pas
+      utilisateurId, on utilise l'utilisateur admin
+      créé dans notre seed.
+    */
+
+    const utilisateurIdNumber = utilisateurId
+      ? Number(utilisateurId)
+      : 1;
+
+    /* Vérifier la disponibilité */
+
+    const disponibilite = await prisma.disponibilite.findUnique({
+      where: {
+        id: disponibiliteIdNumber
+      },
+      include: {
+        rendezVous: true
+      }
+    });
+
+    if (!disponibilite) {
+      return res.status(404).json({
+        message: "Disponibilité introuvable."
+      });
+    }
+
+    if (
+      disponibilite.medecinId !== medecinIdNumber ||
+      !disponibilite.disponible ||
+      disponibilite.rendezVous
+    ) {
+      return res.status(400).json({
+        message: "Ce créneau est déjà réservé ou indisponible."
+      });
+    }
+
+    /* Créer le rendez-vous */
+
+    const nouveauRdv = await prisma.rendezVous.create({
+      data: {
+        utilisateurId: utilisateurIdNumber,
+        medecinId: medecinIdNumber,
+        disponibiliteId: disponibiliteIdNumber,
+        patientNom: patientNom
+      }
+    });
+
+    /*
+      On marque également le créneau comme indisponible.
+    */
+
+    await prisma.disponibilite.update({
+      where: {
+        id: disponibiliteIdNumber
+      },
+      data: {
+        disponible: false
+      }
+    });
+
+    res.status(201).json(nouveauRdv);
+  } catch (error) {
+    console.error("Erreur réservation :", error);
+
+    res.status(500).json({
+      message: "Erreur lors de la réservation."
+    });
+  }
+});
+
+/* =========================
+   SERVEUR
+========================= */
 
 app.listen(5000, () => {
   console.log("Serveur lancé sur http://localhost:5000");
+});
+
+/* =========================
+   FERMETURE PRISMA
+========================= */
+
+process.on("SIGINT", async () => {
+  await prisma.$disconnect();
+  process.exit(0);
 });
